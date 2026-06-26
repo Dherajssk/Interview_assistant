@@ -33,6 +33,11 @@ const scoreValue = document.getElementById("scoreValue");
 const feedbackText = document.getElementById("feedbackText");
 const improvementText = document.getElementById("improvementText");
 const newInterviewBtn = document.getElementById("newInterviewBtn");
+const resumeUploadState = document.getElementById("resumeUploadState");
+const resumeFileInput = document.getElementById("resumeFileInput");
+const resumeFileName = document.getElementById("resumeFileName");
+const uploadResumeBtn = document.getElementById("uploadResumeBtn");
+const resumeUploadStatus = document.getElementById("resumeUploadStatus");
 
 // Subject Icons Map
 const iconMap = {
@@ -41,8 +46,12 @@ const iconMap = {
     "Python": "fab fa-python text-yellow-400",
     "English": "fas fa-language text-green-400",
     "HTML": "fab fa-html5 text-orange-400",
-    "CSS": "fab fa-css3-alt text-blue-400"
+    "CSS": "fab fa-css3-alt text-blue-400",
+    "Resume": "fas fa-file-lines text-pink-400"
 };
+
+let resumeUploaded = false;
+let selectedResumeFile = null;
 
 
 // ========== UI STATE FUNCTIONS ==========
@@ -53,12 +62,21 @@ function showInterviewPanel(subject) {
     subjectBtns.forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.subject === subject);
     });
+
+    resumeUploadState.classList.add("hidden");
+
+    if (subject === "Resume" && !resumeUploaded) {
+        welcomeState.classList.add("hidden");
+        interviewState.classList.add("hidden");
+        resumeUploadState.classList.remove("hidden");
+        return;
+    }
     
     welcomeState.classList.add("hidden");
     interviewState.classList.remove("hidden");
     feedbackSection.classList.add("hidden");
     
-    subjectBadge.textContent = subject;
+    subjectBadge.textContent = subject === "Resume" ? "Resume Questions" : subject;
     subjectIcon.className = iconMap[subject] + " text-2xl";
     questionNum.textContent = "1";
     
@@ -137,6 +155,7 @@ function resetToWelcome() {
     
     welcomeState.classList.remove("hidden");
     interviewState.classList.add("hidden");
+    resumeUploadState.classList.add("hidden");
     
     recordBtn.classList.remove("bg-red-500", "text-white", "recording-active");
     recordBtn.classList.add("bg-zinc-800/80", "text-gray-400");
@@ -310,12 +329,18 @@ async function startInterview() {
         
         const contentType = response.headers.get("content-type");
         
-        if (contentType && contentType.includes("text/plain")) {
+        if (response.ok && contentType && contentType.includes("text/plain")) {
             handleAudioStream(response, () => {
                 endInterviewBtn.disabled = false;
             });
-        } else {
+        } else if (contentType && contentType.includes("application/json")) {
             const data = await response.json();
+            if (!response.ok || data.success === false) {
+                recordingStatus.textContent = data.error || "Something went wrong starting the interview";
+                recordBtn.classList.add("hidden");
+                startInterviewBtn.classList.remove("hidden");
+                return;
+            }
             console.log("Question:", data.question);
             enableRecording();
             endInterviewBtn.disabled = false;
@@ -426,6 +451,42 @@ async function getFeedback() {
 }
 
 
+const uploadResumeApiUrl = "http://127.0.0.1:5000/upload-resume";
+
+async function uploadResume() {
+    if (!selectedResumeFile) return;
+
+    uploadResumeBtn.disabled = true;
+    uploadResumeBtn.textContent = "Uploading...";
+    resumeUploadStatus.textContent = "Parsing and indexing your resume...";
+
+    const formData = new FormData();
+    formData.append("resume", selectedResumeFile);
+
+    try {
+        const response = await fetch(uploadResumeApiUrl, {
+            method: "POST",
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            resumeUploaded = true;
+            resumeUploadStatus.textContent = `Resume indexed (${data.chunks_indexed} sections). Starting interview...`;
+            setTimeout(() => showInterviewPanel("Resume"), 600);
+        } else {
+            resumeUploadStatus.textContent = data.error || "Upload failed - please try again";
+            uploadResumeBtn.disabled = false;
+            uploadResumeBtn.textContent = "Upload & Continue";
+        }
+    } catch (error) {
+        resumeUploadStatus.textContent = "Backend not connected";
+        uploadResumeBtn.disabled = false;
+        uploadResumeBtn.textContent = "Upload & Continue";
+    }
+}
+
+
 // ========== EVENT LISTENERS ==========
 
 subjectBtns.forEach((btn) => {
@@ -450,5 +511,16 @@ recordBtn.addEventListener("click", () => {
 
 submitBtn.addEventListener("click", submitAnswer);
 endInterviewBtn.addEventListener("click", endInterview);
+
+resumeFileInput.addEventListener("change", () => {
+    const file = resumeFileInput.files[0];
+    if (!file) return;
+    selectedResumeFile = file;
+    resumeFileName.textContent = file.name;
+    uploadResumeBtn.disabled = false;
+    resumeUploadStatus.textContent = "";
+});
+
+uploadResumeBtn.addEventListener("click", uploadResume);
 getFeedbackBtn.addEventListener("click", getFeedback);
 newInterviewBtn.addEventListener("click", resetToWelcome);

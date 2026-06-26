@@ -1,0 +1,14 @@
+flask
+flask-cors
+python-dotenv
+langchain
+langgraph
+langchain-google-genai
+assemblyai
+requests
+
+# RAG (resume questions feature)
+chromadb
+pypdf
+python-docx
+google-genai
